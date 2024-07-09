@@ -20,7 +20,7 @@ class Buffer:
         self.device = device
 
     def add(self, obs, action, reward, next_obs, done):
-        """ add an experience to the memory """
+        """ add an experience to the memory """ #
         self.obs[self._index] = obs
         self.action[self._index] = action
         self.reward[self._index] = reward

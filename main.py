@@ -3,7 +3,7 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pettingzoo.mpe import simple_adversary_v2, simple_spread_v2, simple_tag_v2
+from pettingzoo.mpe import simple_adversary_v3, simple_spread_v3, simple_tag_v3
 
 from MADDPG import MADDPG
 
@@ -11,12 +11,12 @@ from MADDPG import MADDPG
 def get_env(env_name, ep_len=25):
     """create environment and get observation and action dimension of each agent in this environment"""
     new_env = None
-    if env_name == 'simple_adversary_v2':
-        new_env = simple_adversary_v2.parallel_env(max_cycles=ep_len)
-    if env_name == 'simple_spread_v2':
-        new_env = simple_spread_v2.parallel_env(max_cycles=ep_len)
-    if env_name == 'simple_tag_v2':
-        new_env = simple_tag_v2.parallel_env(max_cycles=ep_len)
+    if env_name == 'simple_adversary_v3':
+        new_env = simple_adversary_v3.parallel_env(max_cycles=ep_len,render_mode='rgb_array')
+    if env_name == 'simple_spread_v3':
+        new_env = simple_spread_v3.parallel_env(max_cycles=ep_len)
+    if env_name == 'simple_tag_v3':
+        new_env = simple_tag_v3.parallel_env(max_cycles=ep_len)
 
     new_env.reset()
     _dim_info = {}
@@ -30,11 +30,11 @@ def get_env(env_name, ep_len=25):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('env_name', type=str, default='simple_adversary_v2', help='name of the env',
-                        choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2'])
+    parser.add_argument('--env_name', type=str, default='simple_adversary_v3', help='name of the env',
+                        choices=['simple_adversary_v3', 'simple_spread_v3', 'simple_tag_v3'])
     parser.add_argument('--episode_num', type=int, default=30000,
                         help='total episode num during training procedure')
-    parser.add_argument('--episode_length', type=int, default=25, help='steps per episode')
+    parser.add_argument('--episode_length', type=int, default=25, help='steps per episode') #序列长度
     parser.add_argument('--learn_interval', type=int, default=100,
                         help='steps interval between learning time')
     parser.add_argument('--random_steps', type=int, default=5e4,
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     result_dir = os.path.join(env_dir, f'{total_files + 1}')
     os.makedirs(result_dir)
 
-    env, dim_info = get_env(args.env_name, args.episode_length)
+    env, dim_info = get_env(args.env_name, args.episode_length) 
     maddpg = MADDPG(dim_info, args.buffer_capacity, args.batch_size, args.actor_lr, args.critic_lr,
                     result_dir)
 
@@ -64,16 +64,21 @@ if __name__ == '__main__':
     # reward of each episode of each agent
     episode_rewards = {agent_id: np.zeros(args.episode_num) for agent_id in env.agents}
     for episode in range(args.episode_num):
-        obs = env.reset()
+        obs, infos = env.reset() #改1
         agent_reward = {agent_id: 0 for agent_id in env.agents}  # agent reward of the current episode
-        while env.agents:  # interact with the env for an episode
+        #while env.agents:  # interact with the env for an episode #zh-cn:与环境交互一个episode
+        for _ in range(args.episode_length): #改3
             step += 1
             if step < args.random_steps:
                 action = {agent_id: env.action_space(agent_id).sample() for agent_id in env.agents}
             else:
                 action = maddpg.select_action(obs)
 
-            next_obs, reward, done, info = env.step(action)
+            next_obs, reward, terminations, truncations, info = env.step(action)
+            #done = terminations or truncations #改2
+            done ={}
+            for agent_id, ft in terminations.items():
+                done[agent_id] = ft or truncations[agent_id]  # done is True if any of the two is True
             # env.render()
             maddpg.add(obs, action, reward, next_obs, done)
 

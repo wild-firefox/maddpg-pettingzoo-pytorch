@@ -8,11 +8,13 @@ from PIL import Image
 from MADDPG import MADDPG
 from main import get_env
 
+import time
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('env_name', type=str, default='simple_adversary_v2', help='name of the env',
-                        choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2'])
-    parser.add_argument('folder', type=str, help='name of the folder where model is saved')
+    parser.add_argument('--env_name', type=str, default='simple_adversary_v3', help='name of the env',
+                        choices=['simple_adversary_v3', 'simple_spread_v3', 'simple_tag_v3'])
+    parser.add_argument('--folder', type=str, default='3',help='name of the folder where model is saved')
     parser.add_argument('--episode-num', type=int, default=10, help='total episode num during evaluation')
     parser.add_argument('--episode-length', type=int, default=50, help='steps per episode')
 
@@ -32,13 +34,18 @@ if __name__ == '__main__':
     # reward of each episode of each agent
     episode_rewards = {agent: np.zeros(args.episode_num) for agent in env.agents}
     for episode in range(args.episode_num):
-        states = env.reset()
+        env, dim_info = get_env(args.env_name, args.episode_length)# ##改4
+        states,infos = env.reset() ##改1
         agent_reward = {agent: 0 for agent in env.agents}  # agent reward of the current episode
         frame_list = []  # used to save gif
         while env.agents:  # interact with the env for an episode
-            actions = maddpg.select_action(states)
-            next_states, rewards, dones, infos = env.step(actions)
-            frame_list.append(Image.fromarray(env.render(mode='rgb_array')))
+            actions = maddpg.select_action(states)  #？？？？还是有噪音的探索   
+            next_states, rewards, terminations, truncations, infos = env.step(actions)
+            # #done = terminations or truncations ## 改2
+            # done ={}
+            # for agent_id, ft in terminations.items():
+            #     done[agent_id] = ft or truncations[agent_id]  # done is True if any of the two is True
+            frame_list.append(Image.fromarray(env.render())) ## 改3
             states = next_states
 
             for agent_id, reward in rewards.items():  # update reward
@@ -64,6 +71,8 @@ if __name__ == '__main__':
     ax.set_xlabel('episode')
     ax.set_ylabel('reward')
     total_files = len([file for file in os.listdir(model_dir)])
+    if os.path.exists(gif_dir):
+        total_files=total_files-1
     title = f'evaluate result of maddpg solve {args.env_name} {total_files - 3}'
     ax.set_title(title)
     plt.savefig(os.path.join(model_dir, title))
