@@ -31,23 +31,30 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--env_name', type=str, default='toy_env', help='name of the env',
                         choices=['toy_env'])
-    parser.add_argument('--episode_num', type=int, default=180000,
+    parser.add_argument('--episode_num', type=int, default=400000,   
                         help='total episode num during training procedure')
-    parser.add_argument('--episode_length', type=int, default=30, help='steps per episode') #序列长度
+    parser.add_argument('--episode_length', type=int, default=30, help='steps per episode') #序列长度     
     parser.add_argument('--learn_interval', type=int, default=3,
                         help='episodes interval between learning time')
     parser.add_argument('--random_steps', type=int, default=5e4,  #
                         help='random steps before the agent start to learn')
-    parser.add_argument('--tau', type=float, default=0.02, help='soft update parameter')
+    parser.add_argument('--tau', type=float, default=0.01, help='soft update parameter')
     parser.add_argument('--gamma', type=float, default=0.95, help='discount factor')
     parser.add_argument('--buffer_capacity', type=int, default=int(1e6), help='capacity of replay buffer')
     parser.add_argument('--batch_size', type=int, default=1024, help='batch-size of replay buffer')
     parser.add_argument('--actor_lr', type=float, default=0.001, help='learning rate of actor')
     parser.add_argument('--critic_lr', type=float, default=0.001, help='learning rate of critic')
     parser.add_argument('--action_bound', type=float, default=2*math.pi, help='upper bound of action')
-    parser.add_argument('--noise_std', type=float, default=0.1*2*math.pi, help='std of noise')
+    parser.add_argument('--noise_std', type=float, default=0.1*2*math.pi, help='std of noise')     
+    parser.add_argument('--policy_number', type=int, default=0, help='number of policy')
+    parser.add_argument('--policy_noise_a', type=float, default=0.1*2*math.pi, help='policy noise')
+    parser.add_argument('--policy_noise_b', type=float, default=0.12*2*math.pi, help='policy noise')
+    parser.add_argument('--win_rate_adjust', type=float, default=0.03, help='win rate adjust')  # 0.05 3v3 0
+    parser.add_argument('--flag', type=bool, default=False, help='flag')
+
     args = parser.parse_args()
     np.random.seed(0)
+
     torch.manual_seed(0)
     # create folder to save result
     env_dir = os.path.join('./results', args.env_name)
@@ -68,12 +75,17 @@ if __name__ == '__main__':
     # reward of each episode of each agent
     win_list = [] #一般胜
     win1_list = [] #大奖励
-    red0_hp_l = []
-    red1_hp_l = []
-    red2_hp_l = []
+
+    red_tank_0_hp_l = []
+    red_tank_1_hp_l = []
+    red_tank_2_hp_l = []
+
+    
+
+    policy_up = 0
     episode_rewards = {agent_id: np.zeros(args.episode_num) for agent_id in env.agents}
     for episode in range(args.episode_num):
-        obs, infos = env.reset() #改1
+        obs, infos = env.reset(args.policy_number,args.policy_noise_a,args.policy_noise_b) #改1
         obs = env.Normalization(obs) #状态归一
         agent_reward = {agent_id: 0 for agent_id in env.agents}  # agent reward of the current episode
         #while env.agents:  # interact with the env for an episode #zh-cn:与环境交互一个episode
@@ -86,9 +98,11 @@ if __name__ == '__main__':
             else:
                 action_nor = maddpg.select_action(obs)
             # 加噪音
+
             action = {agent_id: [np.clip(a[0]*args.action_bound + np.random.normal(0, args.noise_std,), 
                             -args.action_bound, args.action_bound)]
                             for agent_id, a in action_nor.items()}
+            
             ## 单个值就行？ 还是得列表？ 都是列表的形式
             #print('action:',action_nor)
             #print('action:',action)
@@ -101,13 +115,24 @@ if __name__ == '__main__':
             for agent_id, r in reward.items():
                 #reward[agent_id] -= 0.01 # 暂时取消
                 #r = abs(reward[agent_id])
+
+                # 测试用
+                # if info['win1'] == True: #只有结算时有 大win
+                #     reward[agent_id] +=  100#3*r  #100
+                #     if info[agent_id] > 1e-3: 
+                #         reward[agent_id] +=  100  #存活奖励
+                #         reward[agent_id] +=  info[agent_id]*100  #生命值奖励
+                # elif info['win2'] == True:  #小win
+                #     reward[agent_id] += 30#r #30
+                
                 if info['win1'] == True: #只有结算时有 大win
-                    reward[agent_id] +=  100#3*r  #100
+                    reward[agent_id] +=  10  #3*r  #100
                     if info[agent_id] > 1e-3: 
-                        reward[agent_id] +=  100  #存活奖励
-                        reward[agent_id] +=  info[agent_id]*100  #生命值奖励
-                elif info['win2'] == True:  #小win
-                    reward[agent_id] += 30#r #30
+                        reward[agent_id] +=  3  #存活奖励
+                        reward[agent_id] +=  info[agent_id]*3 #生命值奖励
+                # elif info['win2'] == True:  #小win
+                #     reward[agent_id] += 1#30#r #30
+                
                 # elif info['lose1'] == True:
                 #     reward[agent_id] -= 3*r
                 # elif info['lose2'] == True:
@@ -129,9 +154,9 @@ if __name__ == '__main__':
         win_list.append(1 if info["win"] else 0) 
         win1_list.append(1 if info["win1"] else 0)
         if info["win1"]:
-            red0_hp_l.append(info["Red-0"])
-            red1_hp_l.append(info["Red-1"])
-            red2_hp_l.append(info["Red-2"])
+            red_tank_0_hp_l.append(info["Red-tank-0"])
+            red_tank_1_hp_l.append(info["Red-tank-1"])
+            red_tank_2_hp_l.append(info["Red-tank-2"])
 
         for agent_id, r in agent_reward.items():  # record reward
             episode_rewards[agent_id][episode] = r
@@ -141,20 +166,67 @@ if __name__ == '__main__':
             message = f'episode {episode + 1}, '
             sum_reward = 0
             for agent_id, r in agent_reward.items():  # record reward
-                message += f'{agent_id}: {r:.2f}; '
+                message += f'{agent_id[4:]}: {r:.1f}; '
                 sum_reward += r
-            message += f'sum reward: {sum_reward:.2f}; '
+            message += f'sum reward: {sum_reward:.1f}; '
             win_rate = np.mean(win_list[-100:]) #一般胜率
             win1_rate = np.mean(win1_list[-100:])
+
+            ''' 策略1 实验
+            if win1_rate > args.win_rate_adjust and args.flag == False:#        #43. 0.5不行
+                policy_up += 1
+                args.policy_noise_b = args.policy_noise_b * 0.9
+                args.noise_std = args.noise_std * 0.9 
+            
+                # if args.policy_noise_b < 1e-3: #  增加敌方难度 减小探索 1
+                #     args.policy_noise_b = args.policy_noise_b * 0.9
+                #     args.noise_std = args.noise_std * 0.9 
+                # else:                              #  增加随机难度 增大探索 2
+                #     args.policy_noise_b = args.policy_noise_b * 1.1 if args.policy_noise_b < 2*math.pi else 2*math.pi
+                #     args.noise_std = args.noise_std * 1.1 if args.noise_std < 0.1*math.pi else 0.1*math.pi
+                #     if args.policy_noise_b >= 2*math.pi and args.noise_std >= 0.1*math.pi:
+                #         args.win_rate_adjust +=0.01 # 3
+                print(f'{policy_up}',args.noise_std,args.policy_noise_b)
+            
+                if policy_up > 200:
+                    args.flag == True
+                    args.policy_number = 0
+                    args.noise_std = 0.1*2*math.pi   
+            
+            if win1_rate > 0.05 and args.flag ==True:
+                policy_up += 1
+                args.noise_std = args.noise_std * 1.1 
+                print(f'{policy_up}',args.noise_std,args.policy_noise_b)       
+            '''
+            
+            
+            # 策略0
+            if win1_rate > args.win_rate_adjust :#        
+                policy_up += 1
+                args.noise_std = args.noise_std * 0.9 
+                if policy_up > 20:
+                    args.win_rate_adjust += 0.02
+                    episode_temp = episode
+                print(f'{policy_up}',args.noise_std,args.win_rate_adjust)     
+
+            # 动态调整
+            if policy_up > 20: #此时episode_temp才有定义
+                if episode - episode_temp > 20000:
+                    args.win_rate_adjust -=0.01
+                    episode_temp = episode
+                    print(f'{policy_up}adjust',args.noise_std,args.win_rate_adjust)
+
+
+
             writer.add_scalar('win_rate', win_rate, episode)
             writer.add_scalar('win1_rate', win1_rate, episode) #大胜利
-            if len(red0_hp_l) > 100:
-                red0_hp = np.mean(red0_hp_l[-100:])
-                red1_hp = np.mean(red1_hp_l[-100:])
-                red2_hp = np.mean(red2_hp_l[-100:])
-                writer.add_scalar('red0_hp', red0_hp, episode)
-                writer.add_scalar('red1_hp', red1_hp, episode)
-                writer.add_scalar('red2_hp', red2_hp, episode)
+            if len(red_tank_0_hp_l) > 100:
+                red_tank_0_hp = np.mean(red_tank_0_hp_l[-100:])
+                red_tank_1_hp = np.mean(red_tank_1_hp_l[-100:])
+                red_tank_2_hp = np.mean(red_tank_2_hp_l[-100:])
+                writer.add_scalar('red_tank_0_hp', red_tank_0_hp, episode)
+                writer.add_scalar('red_tank_1_hp', red_tank_1_hp, episode)
+                writer.add_scalar('red_tank_2_hp', red_tank_2_hp, episode)
                 # 创建一个字典来存储多个标量数据 不好横向比较 暂时弃用
                 # tag_scalar_dict = {
                 # 'red0_hp': red0_hp,
@@ -164,17 +236,27 @@ if __name__ == '__main__':
                 # # 使用 add_scalars 方法将多个标量数据添加到同一个图表中
                 # writer.add_scalars('red_hp', tag_scalar_dict, episode)
 
+            message += f'red_hp:'
+            for agend_id in env.agents:
+                message += f'{info[agend_id]:.1f},'
+            message = message[:-1] + ';'
+            message += f'blue_hp:'
+            for agend_id in env.agents_e:
+                message += f'{info[agend_id]:.1f},'
+            message = message[:-1] + ';'
 
-            message += f'red_hp:{info["Red-0"]:.2f},{info["Red-1"]:.2f},{info["Red-2"]:.2f};'
-            message += f"hp:{info['Blue-0']:.2f},{info['Blue-1']:.2f},{info['Blue-2']:.2f}; "
             message += f'win rate: {win_rate:.2f}; '
             message += f'win1 rate: {win1_rate:.2f}; '
             print(message)
+        if episode == args.episode_num // 2 :
+            name = str(args.policy_number) + '_' +str(episode) 
+            maddpg.save(episode_rewards, name)  # save model
+
 
         
 
-
-    maddpg.save(episode_rewards)  # save model
+    name = str(args.policy_number) + '_' +str(args.episode_num)      
+    maddpg.save(episode_rewards, name)  # save model
 
 
     def get_running_reward(arr: np.ndarray, window=100):

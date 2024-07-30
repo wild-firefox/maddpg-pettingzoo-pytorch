@@ -37,7 +37,7 @@ class Agent:
 
         logits = self.actor(obs)  # torch.Size([batch_size, action_size])
         # action = self.gumbel_softmax(logits)
-        action = F.gumbel_softmax(logits, hard=True) #hard=True表示返回one-hot编码 #使用Gumbel噪声
+        action = F.gumbel_softmax(logits, hard=True) #hard=True表示返回one-hot编码 
         if model_out:
             return action, logits
         return action 
@@ -47,11 +47,11 @@ class Agent:
         # we use target actor to get next action given next states, #zh-cn:我们使用目标演员在给定下一个状态时获得下一个动作，
         # which is sampled from replay buffer with size torch.Size([batch_size, state_dim]) #zh-cn：它是从大小为的重放缓冲区中采样的
 
-        logits = self.target_actor(obs)  # torch.Size([batch_size, action_size])
+        logits = self.target_actor(obs)  # torch.Size([batch_size, action_size])  ################！！！ 这里是target_actor
         # action = self.gumbel_softmax(logits)
-        action = F.gumbel_softmax(logits, hard=True) #hard=True表示返回one-hot编码  #False表示返回概率分布
-        return action.squeeze(0).detach()  #squeeze()函数的作用是对数据的维度进行压缩或者解压。a.squeeze(0)表示压缩第0维的维度，a.squeeze(1)表示压缩第1维的维度，以此类推。当然，a.squeeze()表示压缩所有的维度。detach()返回一个新的Variable，从当前计算图中分离下来的，但是仍指向原变量的存放位置，不同之处只是requires_grad为false，得到的这个Variable永远不需要计算其梯度，不具有grad。
-
+        action = F.gumbel_softmax(logits, hard=True) #hard=True表示返回one-hot编码  #False表示返回概率分布 #batch_size, action_size
+        return action.squeeze(0).detach()  #squeeze()函数的作用是对数据的维度进行压缩。a.squeeze(0)表示压缩第0维的维度，a.squeeze(1)表示压缩第1维的维度，以此类推。当然，a.squeeze()表示压缩所有的维度。detach()返回一个新的Variable，从当前计算图中分离下来的，但是仍指向原变量的存放位置，不同之处只是requires_grad为false，得到的这个Variable永远不需要计算其梯度，不具有grad。
+                                           # 实际这里没用上squeeze
     def critic_value(self, state_list: List[Tensor], act_list: List[Tensor]):
         x = torch.cat(state_list + act_list, 1)
         return self.critic(x).squeeze(1)  # tensor with a given length

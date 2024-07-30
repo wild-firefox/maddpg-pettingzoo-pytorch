@@ -70,8 +70,8 @@ class MADDPG:
             o, a, r, n_o, d = buffer.sample(indices)
             obs[agent_id] = o
             act[agent_id] = a
-            reward[agent_id] = r
-            next_obs[agent_id] = n_o
+            reward[agent_id] = r 
+            next_obs[agent_id] = n_o #batch_size x state_dim
             done[agent_id] = d
             # calculate next_action using target_network and next_state
             next_act[agent_id] = self.agents[agent_id].target_action(n_o) # next_act 就是为了计算下一个状态的Q值
@@ -80,11 +80,11 @@ class MADDPG:
 
     def select_action(self, obs):
         actions = {}
-        for agent, o in obs.items():
-            o = torch.from_numpy(o).unsqueeze(0).float()
+        for agent, o in obs.items(): #obs state_dim
+            o = torch.from_numpy(o).unsqueeze(0).float() #  1xstate_dim
             a = self.agents[agent].action(o)  # torch.Size([1, action_size])   ##这个action有噪音
             # NOTE that the output is a tensor, convert it to int before input to the environment
-            actions[agent] = a.squeeze(0).argmax().item()  # 
+            actions[agent] = a.squeeze(0).argmax().item()  # 选择最大的概率值对应的动作 --适用离散动作空间
             self.logger.info(f'{agent} action: {actions[agent]}')
         return actions
 
@@ -105,7 +105,7 @@ class MADDPG:
             # update actor
             # action of the current agent is calculated using its actor
             action, logits = agent.action(obs[agent_id], model_out=True)  #action
-            act[agent_id] = action
+            act[agent_id] = action #
             actor_loss = -agent.critic_value(list(obs.values()), list(act.values())).mean()
             actor_loss_pse = torch.pow(logits, 2).mean()
             agent.update_actor(actor_loss + 1e-3 * actor_loss_pse)

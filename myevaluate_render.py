@@ -16,10 +16,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--env_name', type=str, default='toy_env', help='name of the env',
                         choices=['toy_env'])
-    parser.add_argument('--folder', type=str, default='54',help='name of the folder where model is saved')
+    parser.add_argument('--folder', type=str, default='58',help='name of the folder where model is saved')
     parser.add_argument('--episode-num', type=int, default=1, help='total episode num during evaluation')
     parser.add_argument('--episode-length', type=int, default=50, help='steps per episode')
     parser.add_argument('--action-bound', type=float, default=2*math.pi, help='upper bound of action')
+    parser.add_argument('--noise_std', type=float, default=0.0*2*math.pi, help='std of noise')
+    parser.add_argument('--model_name', type=str, default='model_0_100000', help='name of the model to be loaded')
+    parser.add_argument('--policy_number', type=int, default=0, help='number of policy')
+    parser.add_argument('--policy_noise_a', type=float, default=0.1*2*math.pi, help='policy noise')
+    parser.add_argument('--policy_noise_b', type=float, default=0.1*2*math.pi, help='policy noise')
 
     args = parser.parse_args()
 
@@ -32,18 +37,20 @@ if __name__ == '__main__':
     gif_num = len([file for file in os.listdir(gif_dir)])  # current number of gif
 
     env, dim_info = get_env(args.env_name,render_mode=True)
-    maddpg = MADDPG.load(dim_info, os.path.join(model_dir, 'model.pt'))
+    maddpg = MADDPG.load(dim_info, os.path.join(model_dir, f'{args.model_name}.pt'))
 
-    agent_num = env.num_agents
+    agent_num = env.num_agents     
     # reward of each episode of each agent
     episode_rewards = {agent: np.zeros(args.episode_num) for agent in env.agents}
     win_list = []
     lose_list = []
     win_rate = []
     lose_rate = []
+    win1_list = []
+    win1_rate = []
     #env, dim_info = get_env(args.env_name,render_mode=True)# ##改4
     for episode in range(args.episode_num):
-        obs,infos = env.reset() ##改1
+        obs,infos = env.reset(args.policy_number,args.policy_noise_a,args.policy_noise_b) ##改1
         obs = env.Normalization(obs) #状态归一
         agent_reward = {agent: 0 for agent in env.agents}  # agent reward of the current episode
         frame_list = []  # used to save gif
@@ -51,11 +58,13 @@ if __name__ == '__main__':
         while not any(done.values()):
             
         #while env.agents:  # interact with the env for an episode
-            action_nor = maddpg.select_action(obs)  #不加噪音了   
-            action = {agent_id: [np.clip(a[0]*args.action_bound ,  #+ np.random.normal(0, args.noise_std,), 
+            action_nor = maddpg.select_action(obs)    
+            action = {agent_id: [np.clip(a[0]*args.action_bound  + np.random.normal(0, args.noise_std,), 
                 -args.action_bound, args.action_bound)]
                 for agent_id, a in action_nor.items()}
+            #print('action:',action)
             next_obs, reward, terminations, truncations, info = env.step(action)
+            print('reward:',reward)
             next_obs = env.Normalization(next_obs) #状态归一
             done ={agent_id: terminations[agent_id] or truncations[agent_id] for agent_id in env.agents}
             #frame_list.append(Image.fromarray(env.render())) ## 改3
@@ -64,12 +73,11 @@ if __name__ == '__main__':
             
             #每个时间步惩罚和结算奖励  
             for agent_id, r in reward.items():
-                #reward[agent_id] -= 0.01 # 暂时取消
-                #r = abs(reward[agent_id])
                 if info['win1'] == True: #只有结算时有 大win
-                    reward[agent_id] +=  100#3*r  #100
-                elif info['win2'] == True:  #小win
-                    reward[agent_id] += 30#r #30
+                    reward[agent_id] +=  10#3*r  #100
+                    if info[agent_id] > 1e-3: 
+                        reward[agent_id] +=  3  #存活奖励
+                        reward[agent_id] +=  info[agent_id]*3 #生命值奖励
 
             for agent_id, r in reward.items():  # update reward
                 agent_reward[agent_id] += r
@@ -80,13 +88,16 @@ if __name__ == '__main__':
         ### 记录胜率曲线
         win_list.append(1 if info["win"] else 0)
         lose_list.append(1 if info["lose"] else 0)
+        win1_list.append(1 if info["win1"] else 0)
         win_rate.append(sum(win_list)/(episode+1))
         lose_rate.append(sum(lose_list)/(episode+1))
+        win1_rate.append(sum(win1_list)/(episode+1))
         for agent_id, reward in agent_reward.items():
             episode_rewards[agent_id][episode] = reward
             message += f'{agent_id}: {reward:.2f}; '
-        message += f'win_rate: {sum(win_list)/(episode+1):.2f}; '
-        message += f'lose_rate: {sum(lose_list)/(episode+1):.2f}; '
+        message += f'win_rate: {sum(win_list)/(episode+1):.3f}; '
+        message += f'lose_rate: {sum(lose_list)/(episode+1):.3f}; '
+        message += f'win1_rate: {sum(win1_list)/(episode+1):.3f}; '
         print(message)
         # save gif
         # frame_list[0].save(os.path.join(gif_dir, f'out{gif_num + episode + 1}.gif'),

@@ -44,7 +44,7 @@ if __name__ == '__main__':
             # #done = terminations or truncations ## 改2
             # done ={}
             # for agent_id, ft in terminations.items():
-            #     done[agent_id] = ft or truncations[agent_id]  # done is True if any of the two is True
+            #     done[agent_id] = ft or truncations[agent_id]  # done is True if any of thxe two is True
             frame_list.append(Image.fromarray(env.render())) ## 改3
             states = next_states
 

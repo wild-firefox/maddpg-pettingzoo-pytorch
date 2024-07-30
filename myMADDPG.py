@@ -34,14 +34,17 @@ class MADDPG:
         # create Agent(actor-critic) and replay buffer for each agent
         self.agents = {}
         self.buffers = {}
-        for agent_id, (obs_dim, act_dim) in dim_info.items():
-            self.agents[agent_id] = Agent(obs_dim, act_dim, global_obs_act_dim, actor_lr, critic_lr)
-            self.buffers[agent_id] = Buffer(capacity, obs_dim, act_dim, 'cpu')
         self.dim_info = dim_info
+        for agent_id, (obs_dim, act_dim) in dim_info.items():
+            self.agents[agent_id] = Agent(obs_dim, act_dim, global_obs_act_dim, actor_lr, critic_lr,dim_info,agent_id)
+            self.buffers[agent_id] = Buffer(capacity, obs_dim, act_dim, 'cpu')
+        
 
         self.batch_size = batch_size
         self.res_dir = res_dir  # directory to save the training result
         self.logger = setup_logger(os.path.join(res_dir, 'maddpg.log'))
+
+        self.agent_x = list(self.agents.keys())[0] #sample 用
 
     def add(self, obs, action, reward, next_obs, done):
         # NOTE that the experience is a dict with agent name as its key
@@ -60,7 +63,7 @@ class MADDPG:
     def sample(self, batch_size):
         """sample experience from all the agents' buffers, and collect data for network input"""
         # get the total num of transitions, these buffers should have same number of transitions
-        total_num = len(self.buffers['Red-0'])  #zh-cn:获取转换的总数，这些缓冲区应该具有相同数量的转换
+        total_num = len(self.buffers[self.agent_x])  #zh-cn:获取转换的总数，这些缓冲区应该具有相同数量的转换
         indices = np.random.choice(total_num, size=batch_size, replace=False) #replace=False表示不重复抽样
 
         # NOTE that in MADDPG, we need the obs and actions of all agents #zh-cn:请注意，在MADDPG中，我们需要所有代理的obs和actions
@@ -94,12 +97,23 @@ class MADDPG:
     def learn(self, batch_size, gamma):
         for agent_id, agent in self.agents.items():
             obs, act, reward, next_obs, done, next_act = self.sample(batch_size)
-            # update critic
-            critic_value = agent.critic_value(list(obs.values()), list(act.values()))
 
-            # calculate target critic value #zh-cn:计算目标评论家价值
-            next_target_critic_value = agent.target_critic_value(list(next_obs.values()),  #这里确实是都有 所有智能体的下一个状态和动作
-                                                                 list(next_act.values()))  #！！ next_target_critic_value
+            '''
+            改注意力机制的话，改下面3处，改成如下：
+            critic_value = agent.critic(torch.cat(list(obs.values()) + list(act.values()), 1),agent_id,self.agents).squeeze(1)
+            
+            next_target_critic_value = agent.target_critic(torch.cat(list(next_obs.values()) + list(next_act.values()), 1),agent_id,self.agents).squeeze(1)
+
+            actor_loss = -agent.critic(torch.cat(list(obs.values()) + list(act.values()), 1),agent_id,self.agents).mean()
+            '''
+            # update critic
+            #critic_value = agent.critic_value(list(obs.values()), list(act.values()))
+            critic_value = agent.critic(torch.cat(list(obs.values()) + list(act.values()), 1),agent_id,self.agents).squeeze(1) #第1处
+
+            # calculate target critic value #zh-cn:计算目标评论家价值                                                #！！ next_target_critic_value
+            #next_target_critic_value = agent.target_critic_value(list(next_obs.values()), list(next_act.values()))  #这里确实是都有 所有智能体的下一个状态和动作                                                  
+            next_target_critic_value = agent.target_critic(torch.cat(list(next_obs.values()) + list(next_act.values()), 1),agent_id,self.agents).squeeze(1) #第2处
+
             target_value = reward[agent_id] + gamma * next_target_critic_value * (1 - done[agent_id])
 
             critic_loss = F.mse_loss(critic_value, target_value.detach(), reduction='mean')
@@ -110,7 +124,8 @@ class MADDPG:
             #action, logits = agent.action(obs[agent_id], model_out=True)  #action
             action = agent.action(obs[agent_id])
             act[agent_id] = action
-            actor_loss = -agent.critic_value(list(obs.values()), list(act.values())).mean()
+            #actor_loss = -agent.critic_value(list(obs.values()), list(act.values())).mean()
+            actor_loss = -agent.critic(torch.cat(list(obs.values()) + list(act.values()), 1),agent_id,self.agents).mean() #第3处
             #actor_loss_pse = torch.pow(logits, 2).mean()
             #agent.update_actor(actor_loss + 1e-3 * actor_loss_pse)
             agent.update_actor(actor_loss)
@@ -126,14 +141,14 @@ class MADDPG:
             soft_update(agent.actor, agent.target_actor)
             soft_update(agent.critic, agent.target_critic)
 
-    def save(self, reward):
+    def save(self, reward,time):
         """save actor parameters of all agents and training reward to `res_dir`"""
         torch.save(
             {name: agent.actor.state_dict() for name, agent in self.agents.items()},  # actor parameter
-            os.path.join(self.res_dir, 'model.pt')
+            os.path.join(self.res_dir, f'model_{time}.pt')
         )
-        with open(os.path.join(self.res_dir, 'rewards.pkl'), 'wb') as f:  # save training data
-            pickle.dump({'rewards': reward}, f)
+        with open(os.path.join(self.res_dir, f'rewards_{time}.pkl'), 'wb') as f:  # save training data
+            pickle.dump({f'rewards': reward}, f)
 
     @classmethod
     def load(cls, dim_info, file):

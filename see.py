@@ -8,6 +8,7 @@ import pickle
 # print(data['rewards']['Red-0'][-10:])
 import time
 import numpy as np
+import math
 #随机种子
 np.random.seed(0)
 from toy_env import ToyEnv#,PettingZoo_ToyEnv
@@ -18,9 +19,12 @@ env = ToyEnv()
 action_bound =2*np.pi
 state , info = env.reset()
 
+blue_win1 = 0
+blue_win2 = 0
 blue_win = 0
-for _ in range(200):
-    obs, infos = env.reset()
+num = 2000
+for _ in range(num):
+    obs, infos = env.reset(1,0.01*2*math.pi,0.01*2*math.pi)
     done = {agent_id: False for agent_id in env.agents}
     while not any(done.values()):
         action = env.sample()#{agent: env.action_space(agent).sample() for agent in env.agents}
@@ -41,7 +45,12 @@ for _ in range(200):
         # message += f'Blue-0_xy : {info["Blue-0_xy"]}, Blue-1_xy : {info["Blue-1_xy"]}, Blue-2_xy : {info["Blue-2_xy"]}, '
         # message += f'Red_0_fuel : {info["Red-0_fuel"]:.2f}, Red_1_fuel : {info["Red-1_fuel"]:.2f}, Red_2_fuel : {info["Red-2_fuel"]:.2f}, '
         # message += f'Blue_0_fuel : {info["Blue-0_fuel"]:.2f}, Blue_1_fuel : {info["Blue-1_fuel"]:.2f}, Blue_2_fuel : {info["Blue-2_fuel"]:.2f}, '
-        message += f'lose : {info["lose"]},win : {info["win"]},win1 : {info["win1"]},win2 : {info["win2"]},'
+        message += f'lose : {info["lose"]},win : {info["win"]},win1 : {info["win1"]},win2 : {info["win2"]},lose1 : {info["lose1"]},lose2 : {info["lose2"]}, '
         #print(message)
+        blue_win1 += 1 if info["lose1"] else 0
+        blue_win2 += 1 if info["lose2"] else 0
         blue_win += 1 if info["lose"] else 0
-print(f'win_rate:{blue_win/200:.2f}')
+
+print(f'win1_rate:{blue_win1/num:.3f}')
+print(f'win2_rate:{blue_win2/num:.3f}')
+print(f'win_rate:{blue_win/num:.3f}')     

@@ -84,3 +84,5 @@ print(maddpg.select_action(observations))
 print(env.Normalization(observations))
 print(env.episode_length)
 
+global_obs_act_dim = sum(sum(val) for val in dim_info.values())
+print(global_obs_act_dim)
